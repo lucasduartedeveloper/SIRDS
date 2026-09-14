@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerador Estéreo 3D - SIRDS Dinâmico com Profundidade Exata</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+            overflow-x: hidden;
+        }
+        h2 {
+            color: #333;
+            font-size: 1.3rem;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+        p {
+            color: #666;
+            font-size: 0.85rem;
+            margin-top: 0;
+            margin-bottom: 15px;
+            text-align: center;
+            max-width: 340px;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 340px;
+            box-sizing: border-box;
+        }
+        canvas {
+            border: 1px solid #ccc;
+            background-color: white;
+            width: 300px;
+            height: 300px;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        #previewContainer {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            margin-bottom: 15px;
+            border: 1px dashed #007BFF;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #000;
+            display: none; 
+        }
+        #previewContainer canvas {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+        .preview-label {
+            position: absolute;
+            top: 5px;
+            left: 5px;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 3px;
+            pointer-events: none;
+            z-index: 10;
+        }
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+            gap: 10px;
+            box-sizing: border-box;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #444;
+        }
+        input[type="file"] {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 0.85rem;
+        }
+        input[type="range"] {
+            width: 85%;
+            cursor: pointer;
+        }
+        .btn {
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            width: 100%;
+            text-align: center;
+            box-sizing: border-box;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        .btn-download {
+            background-color: #28a745;
+            display: none; 
+            text-decoration: none;
+            box-sizing: border-box;
+        }
+        .btn-download:hover {
+            background-color: #218838;
+        }
+    </style>
+
+    <!-- Importando Three.js, OBJLoader e OrbitControls -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Gerador Estéreo 3D</h2>
+        <p>Relaxe a vista olhando "através" da tela para enxergar o objeto em relevo 3D.</p>
+        
+        <!-- Tela de visualização 3D interativa (300x300) -->
+        <div id="previewContainer">
+            <div id="previewLabel" class="preview-label">Visualizador 3D (300x300)</div>
+            <div id="threePreviewCanvasContainer" style="width:100%; height:100%;"></div>
+        </div>
+
+        <!-- Canvas principal do SIRDS -->
+        <canvas id="stereoCanvas" width="300" height="300"></canvas>
+        
+        <div class="controls">
+            <div class="control-group" style="align-items: stretch;">
+                <label for="textInput" style="margin-bottom: 4px; font-weight: bold;">Digite um texto:</label>
+                <textarea id="textInput" placeholder="Ex: 3D" style="height: 35px; padding: 6px; resize: none; border: 1px solid #ccc; border-radius: 4px; font-family: Arial; box-sizing: border-box;"></textarea>
+            </div>
+
+            <div class="control-group" style="align-items: stretch;">
+                <label for="uploadImage" style="margin-bottom: 4px; font-weight: bold;">Ou Enviar Imagem:</label>
+                <input type="file" id="uploadImage" accept="image/*">
+            </div>
+
+            <div class="control-group" style="align-items: stretch;">
+                <label for="uploadObj" style="margin-bottom: 4px; font-weight: bold; color: #d63384;">Ou Carregar Arquivo .OBJ:</label>
+                <input type="file" id="uploadObj" accept=".obj">
+            </div>
+            
+            <div class="control-group">
+                <label for="sepRange">Largura do Padrão (EPD): <span id="sepValue">100</span>px</label>
+                <input type="range" id="sepRange" min="80" max="140" value="100">
+            </div>
+
+            <div class="control-group">
+                <label for="multRange">Intensidade do Relevo: <span id="multValue">0.6</span></label>
+                <input type="range" id="multRange" min="0.3" max="1.0" step="0.05" value="0.6">
+            </div>
+
+            <div class="control-group">
+                <label for="speedRange">Velocidade do Giro: <span id="speedValue">1.0</span>x</label>
+                <input type="range" id="speedRange" min="0.0" max="5.0" step="0.25" value="1.0">
+            </div>
+
+            <button id="togglePreviewModeBtn" class="btn" style="background-color: #6c757d; display: none;">Ver Depth Map no Canvas: Desativado</button>
+            <button id="toggleColorBtn" class="btn" style="background-color: #e83e8c;">Colorir Objeto 3D: Desativado</button>
+            <button id="togglePatternBtn" class="btn" style="background-color: #6f42c1;">Padrão: 3 Tons (Preto/Cinza/Branco)</button>
+            <button id="toggleBrightnessBtn" class="btn" style="background-color: #17a2b8;">Inverter Relevo (Frente/Fundo)</button>
+
+            <a id="downloadBtn" class="btn btn-download" download="stereogram.png">Baixar Imagem 3D</a>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('stereoCanvas');
+        const ctx = canvas.getContext('2d');
+        const uploadInput = document.getElementById('uploadImage');
+        const uploadObjInput = document.getElementById('uploadObj');
+        const textInput = document.getElementById('textInput');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const toggleBrightnessBtn = document.getElementById('toggleBrightnessBtn');
+        const togglePatternBtn = document.getElementById('togglePatternBtn');
+        const toggleColorBtn = document.getElementById('toggleColorBtn');
+        const togglePreviewModeBtn = document.getElementById('togglePreviewModeBtn');
+        const sepRange = document.getElementById('sepRange');
+        const sepValueSpan = document.getElementById('sepValue');
+        const multRange = document.getElementById('multRange');
+        const multValueSpan = document.getElementById('multValue');
+        const speedRange = document.getElementById('speedRange');
+        const speedValueSpan = document.getElementById('speedValue');
+        const previewContainer = document.getElementById('previewContainer');
+        const previewLabel = document.getElementById('previewLabel');
+
+        const CANVAS_SIZE = 300;
+        const RENDER_SIZE = 600; 
+        let EPD = 100; 
+        let depthMultiplier = 0.6; 
+        let rotationSpeed = 0.015;
+        let invertDepth = false;
+        let useOnlyBlackAndWhite = false; 
+        let colorizeObject = false; 
+        let showDepthOnCanvas = false;
+        let lastDepthPixels = null;
+
+        let threeScene, threeCamera, threeRenderer, loadedMesh = null;
+        let renderTarget, exactDepthMaterial, normalMaterial;
+        let controls;
+        let animationId = null;
+        let isObjMode = false;
+        const readBuffer = new Uint8Array(RENDER_SIZE * RENDER_SIZE * 4);
+
+        ctx.imageSmoothingEnabled = false;
+
+        function initThreeJS() {
+            threeScene = new THREE.Scene();
+            threeScene.background = new THREE.Color(0x000000); 
+
+            threeCamera = new THREE.PerspectiveCamera(45, 1.0, 0.1, 100.0);
+            threeCamera.position.z = 5;
+
+            const previewDiv = document.getElementById('threePreviewCanvasContainer');
+            threeRenderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            threeRenderer.setSize(CANVAS_SIZE, CANVAS_SIZE);
+            previewDiv.appendChild(threeRenderer.domElement);
+
+            controls = new THREE.OrbitControls(threeCamera, threeRenderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            threeScene.add(ambientLight);
+
+            renderTarget = new THREE.WebGLRenderTarget(RENDER_SIZE, RENDER_SIZE, {
+                minFilter: THREE.LinearFilter,
+                magFilter: THREE.LinearFilter,
+                format: THREE.RGBAFormat
+            });
+
+            // Shader com medição exata baseada no Bounding Box: 
+            // O ponto mais próximo mapeia rigorosamente para 1.0 (Branco Puro) e o mais distante para 0.0 (Preto Puro).
+            exactDepthMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    uMinZ: { value: 4.0 },
+                    uMaxZ: { value: 6.0 }
+                },
+                vertexShader: `
+                    varying float vDepth;
+                    varying vec3 vNormalView;
+                    void main() {
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        vDepth = -mvPosition.z;
+                        vNormalView = normalize(normalMatrix * normal);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    varying float vDepth;
+                    varying vec3 vNormalView;
+                    uniform float uMinZ;
+                    uniform float uMaxZ;
+                    void main() {
+                        // Mapeia estritamente do mais próximo (uMinZ -> Branco 1.0) ao mais distante (uMaxZ -> Preto 0.0)
+                        float normalizedDepth = clamp((uMaxZ - vDepth) / (uMaxZ - uMinZ), 0.0, 1.0);
+                        
+                        // Detalhes estáticos de relevo por cavidade sem distorcer o objeto
+                        float cavityFactor = abs(vNormalView.z);
+                        float finalIntensity = mix(normalizedDepth, normalizedDepth * (0.8 + 0.2 * cavityFactor), 0.4);
+
+                        gl_FragColor = vec4(vec3(clamp(finalIntensity, 0.0, 1.0)), 1.0);
+                    }
+                `
+            });
+
+            normalMaterial = new THREE.MeshNormalMaterial();
+        }
+        initThreeJS();
+
+        window.addEventListener('load', () => {
+            textInput.value = "3D";
+            generateTextImage("3D", (img) => {
+                const tempC = document.createElement('canvas');
+                tempC.width = CANVAS_SIZE;
+                tempC.height = CANVAS_SIZE;
+                const tCtx = tempC.getContext('2d');
+                tCtx.drawImage(img, 0, 0);
+                lastDepthPixels = tCtx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data;
+                
+                processSIRDS();
+            });
+        });
+
+        textInput.addEventListener('input', function() {
+            stopObjMode();
+            const txt = this.value;
+            if (txt.trim() !== "") {
+                uploadInput.value = "";
+                generateTextImage(txt, (img) => {
+                    const tempC = document.createElement('canvas');
+                    tempC.width = CANVAS_SIZE;
+                    tempC.height = CANVAS_SIZE;
+                    const tCtx = tempC.getContext('2d');
+                    tCtx.drawImage(img, 0, 0);
+                    lastDepthPixels = tCtx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data;
+
+                    processSIRDS();
+                });
+            } else {
+                lastDepthPixels = null;
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                downloadBtn.style.display = 'none';
+            }
+        });
+
+        uploadInput.addEventListener('change', function(e) {
+            stopObjMode();
+            const file = e.target.files[0];
+            if (!file) return;
+            textInput.value = "";
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const img = new Image();
+                img.onload = function() {
+                    const tempC = document.createElement('canvas');
+                    tempC.width = CANVAS_SIZE;
+                    tempC.height = CANVAS_SIZE;
+                    const tCtx = tempC.getContext('2d');
+
+                    const ratio = Math.max(CANVAS_SIZE / img.width, CANVAS_SIZE / img.height);
+                    const newWidth = img.width * ratio;
+                    const newHeight = img.height * ratio;
+                    const cx = (CANVAS_SIZE - newWidth) / 2;
+                    const cy = (CANVAS_SIZE - newHeight) / 2;
+
+                    tCtx.fillStyle = '#FFFFFF';
+                    tCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+                    tCtx.drawImage(img, 0, 0, img.width, img.height, cx, cy, newWidth, newHeight);
+
+                    lastDepthPixels = tCtx.getImageData(0, 0, CANVAS_SIZE, CANVAS_SIZE).data;
+                    processSIRDS();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        uploadObjInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            textInput.value = "";
+            uploadInput.value = "";
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                const contents = event.target.result;
+                const loader = new THREE.OBJLoader();
+                const object = loader.parse(contents);
+
+                if (loadedMesh) threeScene.remove(loadedMesh);
+
+                const box = new THREE.Box3().setFromObject(object);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                
+                object.position.sub(center); 
+
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const scale = 2.2 / maxDim;
+                object.scale.multiplyScalar(scale);
+
+                // Medição automática dos limites exatos do objeto em relação à câmera
+                // Atualiza o Bounding Box após o redimensionamento
+                object.geometry?.computeBoundingBox?.();
+                const measuredBox = new THREE.Box3().setFromObject(object);
+                
+                // Em coordenadas de visão (View Space Z), quanto menor o valor, mais perto da câmera.
+                // Convertendo para a profundidade positiva do shader:
+                const minViewZ = threeCamera.position.z - measuredBox.max.z; // Ponto mais próximo da câmera
+                const maxViewZ = threeCamera.position.z - measuredBox.min.z; // Ponto mais distante da câmera
+
+                exactDepthMaterial.uniforms.uMinZ.value = minViewZ;
+                exactDepthMaterial.uniforms.uMaxZ.value = maxViewZ;
+
+                loadedMesh = object;
+                threeScene.add(loadedMesh);
+
+                controls.reset();
+                threeCamera.position.set(0, 0, 5);
+
+                previewContainer.style.display = 'block';
+                togglePreviewModeBtn.style.display = 'block';
+                startObjMode();
+            };
+            reader.readAsText(file);
+        });
+
+        function startObjMode() {
+            isObjMode = true;
+            if (animationId) cancelAnimationFrame(animationId);
+
+            function animate() {
+                if (!isObjMode) return;
+                animationId = requestAnimationFrame(animate);
+
+                controls.update();
+
+                if (loadedMesh) {
+                    loadedMesh.rotation.y += rotationSpeed;
+                }
+
+                if (loadedMesh) {
+                    loadedMesh.traverse(child => {
+                        if (child.isMesh) child.material = exactDepthMaterial;
+                    });
+                }
+                threeScene.overrideMaterial = exactDepthMaterial;
+                threeScene.background = new THREE.Color(0x000000); 
+                threeRenderer.setRenderTarget(renderTarget);
+                threeRenderer.render(threeScene, threeCamera);
+                
+                threeRenderer.setRenderTarget(null);
+
+                threeRenderer.readRenderTargetPixels(renderTarget, 0, 0, RENDER_SIZE, RENDER_SIZE, readBuffer);
+                lastDepthPixels = downsamplePixels(readBuffer, RENDER_SIZE, CANVAS_SIZE);
+
+                if (showDepthOnCanvas) {
+                    threeScene.overrideMaterial = exactDepthMaterial;
+                    threeRenderer.render(threeScene, threeCamera);
+                } else {
+                    if (loadedMesh) {
+                        loadedMesh.traverse(child => {
+                            if (child.isMesh) child.material = normalMaterial;
+                        });
+                    }
+                    threeScene.overrideMaterial = null;
+                    threeRenderer.render(threeScene, threeCamera);
+                }
+
+                processSIRDSWithPixels(lastDepthPixels, true);
+            }
+            animate();
+        }
+
+        function downsamplePixels(sourceBuffer, srcSize, targetSize) {
+            const targetBuffer = new Uint8Array(targetSize * targetSize * 4);
+            const ratio = srcSize / targetSize;
+
+            for (let y = 0; y < targetSize; y++) {
+                for (let x = 0; x < targetSize; x++) {
+                    let rSum = 0, gSum = 0, bSum = 0, count = 0;
+                    
+                    const srcXStart = Math.floor(x * ratio);
+                    const srcXEnd = Math.floor((x + 1) * ratio);
+                    const srcYStart = Math.floor(y * ratio);
+                    const srcYEnd = Math.floor((y + 1) * ratio);
+
+                    for (let sy = srcYStart; sy < srcYEnd; sy++) {
+                        for (let sx = srcXStart; sx < srcXEnd; sx++) {
+                            const srcIdx = (sy * srcSize + sx) * 4;
+                            rSum += sourceBuffer[srcIdx];
+                            gSum += sourceBuffer[srcIdx + 1];
+                            bSum += sourceBuffer[srcIdx + 2];
+                            count++;
+                        }
+                    }
+
+                    const targetIdx = (y * targetSize + x) * 4;
+                    if (count > 0) {
+                        targetBuffer[targetIdx]     = rSum / count;
+                        targetBuffer[targetIdx + 1] = gSum / count;
+                        targetBuffer[targetIdx + 2] = bSum / count;
+                        targetBuffer[targetIdx + 3] = 255;
+                    }
+                }
+            }
+            return targetBuffer;
+        }
+
+        function stopObjMode() {
+            isObjMode = false;
+            previewContainer.style.display = 'none';
+            togglePreviewModeBtn.style.display = 'none';
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+        }
+
+        sepRange.addEventListener('input', function() {
+            EPD = parseInt(this.value);
+            sepValueSpan.textContent = EPD;
+            if (lastDepthPixels) processSIRDSWithPixels(lastDepthPixels, isObjMode);
+        });
+
+        multRange.addEventListener('input', function() {
+            depthMultiplier = parseFloat(this.value);
+            multValueSpan.textContent = depthMultiplier.toFixed(2);
+            if (lastDepthPixels) processSIRDSWithPixels(lastDepthPixels, isObjMode);
+        });
+
+        speedRange.addEventListener('input', function() {
+            rotationSpeed = parseFloat(this.value) * 0.015;
+            speedValueSpan.textContent = parseFloat(this.value).toFixed(2);
+        });
+
+        togglePreviewModeBtn.addEventListener('click', function() {
+            showDepthOnCanvas = !showDepthOnCanvas;
+            togglePreviewModeBtn.textContent = showDepthOnCanvas ? 
+                "Ver Depth Map no Canvas: Ativado" : "Ver Depth Map no Canvas: Desativado";
+            togglePreviewModeBtn.style.backgroundColor = showDepthOnCanvas ? "#17a2b8" : "#6c757d";
+            previewLabel.textContent = showDepthOnCanvas ? "Mapa de Profundidade Exato (Branco Máximo)" : "Visualizador 3D (300x300)";
+        });
+
+        togglePatternBtn.addEventListener('click', function() {
+            useOnlyBlackAndWhite = !useOnlyBlackAndWhite;
+            togglePatternBtn.textContent = useOnlyBlackAndWhite ? 
+                "Padrão: Apenas Preto e Branco (50%/50%)" : "Padrão: 3 Tons (Preto/Cinza/Branco)";
+            togglePatternBtn.style.backgroundColor = useOnlyBlackAndWhite ? "#e0a800" : "#6f42c1";
+            if (lastDepthPixels) processSIRDSWithPixels(lastDepthPixels, isObjMode);
+        });
+
+        toggleColorBtn.addEventListener('click', function() {
+            colorizeObject = !colorizeObject;
+            toggleColorBtn.textContent = colorizeObject ? 
+                "Colorir Objeto 3D: Vermelho (Ativado)" : "Colorir Objeto 3D: Desativado";
+            toggleColorBtn.style.backgroundColor = colorizeObject ? "#dc3545" : "#e83e8c";
+            if (lastDepthPixels) processSIRDSWithPixels(lastDepthPixels, isObjMode);
+        });
+
+        toggleBrightnessBtn.addEventListener('click', function() {
+            invertDepth = !invertDepth;
+            toggleBrightnessBtn.style.backgroundColor = invertDepth ? '#e0a800' : '#17a2b8';
+            if (lastDepthPixels) processSIRDSWithPixels(lastDepthPixels, isObjMode);
+        });
+
+        function generateTextImage(text, callback) {
+            const textCanvas = document.createElement('canvas');
+            textCanvas.width = CANVAS_SIZE;
+            textCanvas.height = CANVAS_SIZE;
+            const tCtx = textCanvas.getContext('2d');
+
+            tCtx.fillStyle = '#FFFFFF';
+            tCtx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+            tCtx.fillStyle = '#000000';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+
+            const lines = text.split('\n');
+            let maxLength = Math.max(...lines.map(l => l.length), 1);
+            let fontSize = Math.min(Math.floor(220 / (maxLength * 0.65)), Math.floor(220 / (lines.length * 1.3)));
+            fontSize = Math.max(16, Math.min(fontSize, 120));
+
+            tCtx.font = `bold ${fontSize}px Arial, sans-serif`;
+            const lineHeight = fontSize * 1.2;
+            const totalHeight = lines.length * lineHeight;
+            let startY = (CANVAS_SIZE / 2) - (totalHeight / 2) + (lineHeight / 2);
+
+            lines.forEach((line, index) => {
+                tCtx.fillText(line, CANVAS_SIZE / 2, startY + (index * lineHeight));
+            });
+
+            const img = new Image();
+            img.onload = () => callback(img);
+            img.src = textCanvas.toDataURL('image/png');
+        }
+
+        function processSIRDS() {
+            if (lastDepthPixels) {
+                processSIRDSWithPixels(lastDepthPixels, false);
+            }
+        }
+
+        function processSIRDSWithPixels(depthPixels, isWebGL) {
+            const outputData = new Uint8ClampedArray(CANVAS_SIZE * CANVAS_SIZE * 4);
+            const mu = 1 / 3; 
+
+            for (let y = 0; y < CANVAS_SIZE; y++) {
+                const sourceY = isWebGL ? (CANVAS_SIZE - 1 - y) : y;
+                
+                const baseRowRandoms = new Int32Array(CANVAS_SIZE);
+                for (let x = 0; x < CANVAS_SIZE; x++) {
+                    const r = Math.random();
+                    if (useOnlyBlackAndWhite) {
+                        baseRowRandoms[x] = r < 0.5 ? 0 : 255;
+                    } else {
+                        if (r < 1/3) baseRowRandoms[x] = 0;
+                        else if (r < 2/3) baseRowRandoms[x] = 128;
+                        else baseRowRandoms[x] = 255;
+                    }
+                }
+
+                const same = new Int32Array(CANVAS_SIZE);
+                for (let x = 0; x < CANVAS_SIZE; x++) {
+                    same[x] = x;
+                }
+
+                const isObjectPixel = new Uint8Array(CANVAS_SIZE);
+
+                for (let x = 0; x < CANVAS_SIZE; x++) {
+                    const idx = (sourceY * CANVAS_SIZE + x) * 4;
+                    let b = (0.299 * depthPixels[idx] + 0.587 * depthPixels[idx+1] + 0.114 * depthPixels[idx+2]) / 255;
+                    
+                    if (invertDepth) b = 1.0 - b;
+
+                    let z = 1.0 - b * depthMultiplier; 
+                    let separation = Math.floor(EPD * (1.0 - mu * z) / (2.0 - mu * z));
+
+                    let left = Math.floor(x - separation / 2);
+                    let right = left + separation;
+
+                    if (left >= 0 && right < CANVAS_SIZE) {
+                        let visible = same[left];
+                        
+                        while (visible !== left && visible !== right && visible !== -1) {
+                            if (visible < right) {
+                                left = visible;
+                            } else {
+                                left = right;
+                                right = visible;
+                            }
+                            visible = same[left];
+                        }
+                        
+                        let curr = left;
+                        while (curr !== right && curr >= 0 && curr < CANVAS_SIZE) {
+                            let nextNode = same[curr];
+                            same[curr] = right;
+                            
+                            if (z > 0.45) {
+                                isObjectPixel[curr] = 1;
+                            }
+
+                            curr = nextNode;
+                        }
+                    }
+                }
+
+                const rowColors = new Int32Array(CANVAS_SIZE);
+                rowColors.fill(-1);
+
+                for (let x = CANVAS_SIZE - 1; x >= 0; x--) {
+                    if (same[x] === x) {
+                        rowColors[x] = baseRowRandoms[x];
+                    } else {
+                        let root = x;
+                        let tracker = same[x];
+                        while(tracker != root && tracker > root && tracker < CANVAS_SIZE) {
+                            root = tracker;
+                            tracker = same[root];
+                        }
+                        if (rowColors[root] === -1) {
+                            rowColors[root] = baseRowRandoms[root];
+                        }
+                        rowColors[x] = rowColors[root];
+                    }
+                }
+
+                for (let x = 0; x < CANVAS_SIZE; x++) {
+                    const outIdx = (y * CANVAS_SIZE + x) * 4;
+                    let val = rowColors[x];
+
+                    let red = val;
+                    let green = val;
+                    let blue = val;
+
+                    if (colorizeObject && isObjectPixel[x] === 1) {
+                        if (val === 128) {
+                            red = 255; green = 0; blue = 0; 
+                        } else if (useOnlyBlackAndWhite && val === 0) {
+                            red = 255; green = 0; blue = 0; 
+                        }
+                    }
+
+                    outputData[outIdx]     = red;   
+                    outputData[outIdx + 1] = green; 
+                    outputData[outIdx + 2] = blue;  
+                    outputData[outIdx + 3] = 255;   
+                }
+            }
+
+            const finalImgData = new ImageData(outputData, CANVAS_SIZE, CANVAS_SIZE);
+            ctx.putImageData(finalImgData, 0, 0);
+
+            downloadBtn.href = canvas.toDataURL('image/png');
+            downloadBtn.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
